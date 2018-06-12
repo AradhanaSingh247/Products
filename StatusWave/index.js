@@ -14,56 +14,14 @@ app.use(bodyParser.urlencoded({ extended: false }));
 var LocalStorage = require("node-localstorage").LocalStorage;
 var localStorage = new LocalStorage("./data");
 
-function signup(name, email, password) {
-  //localStorage.setItem("name", signupDetails.name);
-  const userId = email.toLowerCase().trim();
-
-  var passwordHash = bcrypt.hashSync(password, config.salt);
-
-  var user = {name, email, passwordHash};
-  localStorage.setItem(userId, JSON.stringify(user));
-}
-
-function getTwitterTokenForUser(userId){
-  var user = JSON.parse(localStorage.getItem(userId));
-  return user.twitterToken;
-}
-
-function saveTokenToUser(userId, tokenDetails){
-  var user = JSON.parse(localStorage.getItem(userId));
-
-  user.twitterToken = tokenDetails;
-
-  localStorage.setItem(userId, JSON.stringify(user));
-}
-
-function verifyUser(email, password) {
-
-  const userId = email.toLowerCase().trim();
-
-  var userString = localStorage.getItem(userId);
-
-  if (!userString){
-    return false;
-  }
-
-  const user = JSON.parse(userString);
-
-  var hash = bcrypt.hashSync(password, config.salt);
-
-  return user.passwordHash === hash;
-}
-
 app.post("/signup", function(request, response) {
   var signupDetails = request.body;
   var userId = signupDetails.email;
   //2. we need to check if the user already exists
 
-  var res = [];
-  for (var i = 0; i < localStorage.length; i++) {
-    res.push(localStorage.key(i));
-  }
-  if (res.indexOf(userId) > 0) {
+  var userIds = getAllUserIdsFromLocalStorage()
+
+  if (userIds.indexOf(userId) > 0) {
     console.log(Error("user already exists"));
   }
   //using bcrypt
@@ -71,30 +29,8 @@ app.post("/signup", function(request, response) {
   signup(signupDetails.name, signupDetails.email, signupDetails.password);
 
   response.status(201).end();
-
 });
 
-function authenticate(auth){
-  try {
-    var baseValue = auth.split(" ")[1];
-
-    var authString = Buffer.from(baseValue, 'base64').toString('ascii');
-    var userPasswordSplit = authString.split(":");
-
-    const email = userPasswordSplit[0];
-    const password = userPasswordSplit[1];
-
-    if (!verifyUser(email, password)) {
-      return null;
-    }
-
-    return email;
-
-  }
-  catch(e){
-    return null;
-  }
-}
 
 app.post("/login", function(request, response) {
   if (!authenticate(request.headers.authorization)) 
@@ -137,7 +73,15 @@ app.post("/message", (request,response) => {
 
   var tokenDetails = getTwitterTokenForUser(userId);
 
-  tweet(message, tokenDetails.oauth_token, tokenDetails.oauth_token_secret);
+  tweet(message, tokenDetails.oauth_token, tokenDetails.oauth_token_secret, (err) => {
+    console.log('error is', err);
+    if (err){
+      response.status(500).end(err);
+    }else{
+response.status(201).end();
+    }
+  });
+  
 });
 
 app.get("/twitter/callback", (req, res) => {
@@ -192,7 +136,7 @@ app.listen(3000, () =>
   console.log("The server started correctly and is listening on port 3000!")
 );
 
-function tweet(message, token, tokenSecret) {
+function tweet(message, token, tokenSecret, cb) {
   const url = "https://api.twitter.com/1.1/statuses/update.json";
 
   var oauth = {
@@ -214,8 +158,84 @@ function tweet(message, token, tokenSecret) {
 
     if (err) {
       console.log(err);
+      cb(err);
     }
-    //cb(err, httpResponse.body);
+    else if (httpResponse.statusCode > 299){
+      cb(httpResponse.body);
+    }
+    else {
+      cb();
+    }
 
+    //cb(err, httpResponse.body);
   });
+}
+
+function signup(name, email, password) {
+  //localStorage.setItem("name", signupDetails.name);
+  const userId = email.toLowerCase().trim();
+
+  var passwordHash = bcrypt.hashSync(password, config.salt);
+
+  var user = {name, email, passwordHash};
+  localStorage.setItem(userId, JSON.stringify(user));
+}
+
+function getTwitterTokenForUser(userId){
+  var user = JSON.parse(localStorage.getItem(userId));
+  return user.twitterToken;
+}
+
+function saveTokenToUser(userId, tokenDetails){
+  var user = JSON.parse(localStorage.getItem(userId));
+
+  user.twitterToken = tokenDetails;
+
+  localStorage.setItem(userId, JSON.stringify(user));
+}
+
+function verifyUser(email, password) {
+  const userId = email.toLowerCase().trim();
+
+  var userString = localStorage.getItem(userId);
+
+  if (!userString){
+    return false;
+  }
+
+  const user = JSON.parse(userString);
+
+  var hash = bcrypt.hashSync(password, config.salt);
+
+  return user.passwordHash === hash;
+}
+
+function authenticate(auth){
+  try {
+    var baseValue = auth.split(" ")[1];
+
+    var authString = Buffer.from(baseValue, 'base64').toString('ascii');
+    var userPasswordSplit = authString.split(":");
+
+    const email = userPasswordSplit[0];
+    const password = userPasswordSplit[1];
+
+    if (!verifyUser(email, password)) {
+      return null;
+    }
+
+    return email;
+
+  }
+  catch(e){
+    return null;
+  }
+}
+
+function getAllUserIdsFromLocalStorage(){
+  var savedUsers = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    savedUsers.push(localStorage.key(i));
+  }
+  return savedUsers;
 }
