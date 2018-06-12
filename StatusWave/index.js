@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require('cors');
 const app = express();
 const qs = require("qs");
 const request = require("request");
@@ -7,6 +8,7 @@ var getRequestToken = require("./src/twitter/get-request-token.js");
 const bcrypt = require('bcryptjs');
 const config = require('./src/config');
 
+app.use(cors());
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: false }));
 
